@@ -58,15 +58,20 @@ export const VANITY_METHODS = Object.freeze({
 const COUNTER_LIMIT = (1n << 64n) - 1n;
 const encoder = new TextEncoder();
 
-// Decoded once on the main thread; each worker receives its own copy and
-// instantiates privately (no shared memory — works without cross-origin
-// isolation, including from file://).
-const wasmBytes = (() => {
-  const binary = atob(VANITY_WASM_B64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-})();
+// Decoded once on the main thread, on the first grind or benchmark rather
+// than at page boot (the module is ~1.4 MB and most sessions never open the
+// vanity tool); each worker receives its own copy and instantiates privately
+// (no shared memory — works without cross-origin isolation, including from
+// file://).
+let decoded;
+const wasmBytes = () => {
+  if (!decoded) {
+    const binary = atob(VANITY_WASM_B64);
+    decoded = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) decoded[i] = binary.charCodeAt(i);
+  }
+  return decoded;
+};
 
 const vanityScript = (script) => VANITY_SCRIPTS[script] ?? VANITY_SCRIPTS.p2wpkh;
 const vanityMethod = (method) => VANITY_METHODS[method] ?? VANITY_METHODS.passphrase;
@@ -374,7 +379,7 @@ export class VanityGrinder {
         fail(event.message || "Vanity worker failed to start.");
       };
       // Every worker gets a private copy of the module (transferred).
-      const copy = wasmBytes.slice().buffer;
+      const copy = wasmBytes().slice().buffer;
       worker.postMessage({ type: "init", wasm: copy }, [copy]);
     });
   }
@@ -464,7 +469,7 @@ export function vanityBenchmark(spawn = spawnBlobWorker) {
       event.preventDefault?.();
       finish(new Error(event.message || "Vanity benchmark worker failed to start."));
     };
-    const copy = wasmBytes.slice().buffer;
+    const copy = wasmBytes().slice().buffer;
     worker.postMessage({ type: "init", wasm: copy }, [copy]);
   });
 }

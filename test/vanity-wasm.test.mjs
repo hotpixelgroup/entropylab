@@ -12,6 +12,7 @@
 // is the BIP39 test vector and the counters are fixed test inputs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -207,6 +208,42 @@ test("pool resume stops at the first gap, regardless of later completed work", (
     assert.equal(result.nextStart, amounts[0] < 10n ? 40n + amounts[0] : 50n + amounts[1]);
     assert.equal(result.stopped, amounts.some(amount => amount < 10n));
   }
+});
+
+// Boot cost: importing the pool helpers must not decode the ~1.4 MB module.
+// The bytes are decoded on the first grind or benchmark (and then reused), so
+// a session that never opens the vanity tool never pays for it. A fresh
+// process is used because this file's own grinds have already decoded it.
+test("importing vanity.js does not decode the WASM module until a worker needs it", () => {
+  const script = `
+    // Count decodes of the vanity payload only: vanity.js imports the core
+    // crypto module through hashes.js, and that one decodes at boot by design.
+    const { VANITY_WASM_B64 } = await import(${JSON.stringify(new URL("../src/js/vanity-wasm-b64.js", import.meta.url).href)});
+    let decoded = 0;
+    const atob = globalThis.atob;
+    globalThis.atob = (text) => { if (text === VANITY_WASM_B64) decoded += 1; return atob(text); };
+    const { vanityBenchmark } = await import(${JSON.stringify(new URL("../src/js/vanity.js", import.meta.url).href)});
+    const afterImport = decoded;
+    let inits = 0;
+    const worker = {
+      postMessage(message, transfer) {
+        if (message.type !== "init") return;
+        inits += 1;
+        if (!(message.wasm instanceof ArrayBuffer) || transfer?.[0] !== message.wasm) throw new Error("init must transfer a private copy");
+        // Fail the benchmark right away: only the init handshake is under test.
+        queueMicrotask(() => this.onmessage?.({ data: { type: "error", message: "stub" } }));
+      },
+      terminate() {},
+    };
+    await vanityBenchmark(() => ({ worker, url: null })).catch(() => {});
+    console.log(JSON.stringify({ afterImport, afterBenchmark: decoded, inits }));
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const { afterImport, afterBenchmark, inits } = JSON.parse(result.stdout.trim().split("\n").pop());
+  assert.equal(afterImport, 0, "import must not decode the module");
+  assert.ok(inits >= 1, "the benchmark must spawn a worker");
+  assert.equal(afterBenchmark, 1, "the first worker decodes the module exactly once");
 });
 
 test("committed vanity WASM artifact is intact (sha256 in module header matches payload)", () => {
