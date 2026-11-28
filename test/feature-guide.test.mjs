@@ -237,13 +237,17 @@ test("Open tool from a workspace lesson selects that lesson's station before foc
     else if (app[i] === "}" && --depth === 0) { end = i + 1; break; }
   }
   const source = `return (tool, lesson) => ${app.slice(app.indexOf("{", head), end)}`;
-  const run = (tool, lesson) => {
-    const state = { workspace: "sp", privacy: "bip47", psbt: "inspector", calls: [] };
-    const doc = { querySelector: (selector) => ({ focus: () => state.calls.push(["focus", selector]) }) };
-    const onOpenTool = new Function("hodlShowWorkspace", "hodlShowPsbtTool", "hodlShowPrivacyTool", "document", source)(
+  const run = (tool, lesson, preview = false) => {
+    const state = { workspace: "sp", privacy: "bip47", psbt: "inspector", seedTool: "seedxor", calls: [] };
+    const doc = {
+      getElementById: (id) => preview && id === "seedtools-tool-tabs" ? {} : null,
+      querySelector: (selector) => ({ focus: () => state.calls.push(["focus", selector]) }),
+    };
+    const onOpenTool = new Function("hodlShowWorkspace", "hodlShowPsbtTool", "hodlShowPrivacyTool", "hodlShowSeedTool", "document", source)(
       (id) => { state.calls.push(["workspace", id]); state.workspace = id; },
       (id, focus) => { state.calls.push(["psbt", id, focus]); state.psbt = id; },
       (id, focus) => { state.calls.push(["privacy", id, focus]); state.privacy = id; },
+      (id, focus) => { state.calls.push(["seed", id, focus]); state.seedTool = id; },
       doc,
     );
     onOpenTool(tool, lesson);
@@ -254,6 +258,10 @@ test("Open tool from a workspace lesson selects that lesson's station before foc
   assert.equal(silent.privacy, "sp", "the Silent Payments lesson must not leave the BIP-47 station selected");
   assert.deepEqual(silent.calls, [["workspace", "sp"], ["privacy", "sp", true]]);
   assert.deepEqual(run("psbt", "nonce").calls, [["workspace", "psbt"], ["psbt", "nonce", true]]);
+  const bip85Preview = run("bip85", "bip85", true);
+  assert.equal(bip85Preview.seedTool, "bip85", "the Guide must not leave Seed XOR selected");
+  assert.deepEqual(bip85Preview.calls, [["workspace", "bip85"], ["seed", "bip85", true]]);
+  assert.deepEqual(run("bip85", "bip85").calls, [["workspace", "bip85"], ["focus", '#workspace-tabs [data-workspace="bip85"]']]);
   assert.deepEqual(run("calc", "keys").calls, [["workspace", "calc"], ["focus", '#workspace-tabs [data-workspace="calc"]']]);
 });
 

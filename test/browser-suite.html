@@ -561,6 +561,40 @@
     }
   });
 
+  await test("Guide opens BIP-85 after Seed XOR and focuses the workspace in release", () => {
+    const workspace = document.querySelector('#workspace-tabs [data-workspace="bip85"]');
+    const initialWorkspace = document.querySelector('#workspace-tabs [aria-selected="true"]');
+    const strip = document.getElementById("seedtools-tool-tabs");
+    const initialStation = strip?.querySelector('[aria-selected="true"]');
+    const overlay = () => document.getElementById("feature-guide-overlay");
+    try {
+      if (strip) {
+        workspace.click();
+        const seedXor = strip.querySelector('[data-seedtools-tool="seedxor"]');
+        seedXor.click();
+        equal(seedXor.getAttribute("aria-selected"), "true", "test must start on Seed XOR");
+        initialWorkspace.click();
+      }
+      document.getElementById("guide-open").click();
+      document.getElementById("guide-lesson-bip85").click();
+      document.getElementById("guide-open-tool").click();
+      assert(overlay().hidden, "tool action left guide open");
+      equal(workspace.getAttribute("aria-selected"), "true");
+      assert(!document.getElementById("bip85-card").hidden, "Guide did not open the BIP-85 card");
+      if (strip) {
+        const station = strip.querySelector('[data-seedtools-tool="bip85"]');
+        equal(station.getAttribute("aria-selected"), "true");
+        equal(document.activeElement, station);
+      } else {
+        equal(document.activeElement, workspace);
+      }
+    } finally {
+      if (overlay() && !overlay().hidden) document.getElementById("guide-close").click();
+      initialStation?.click();
+      initialWorkspace.click();
+    }
+  });
+
   if (new URLSearchParams(location.search).get("offline-test") === "1") {
     // This fresh file:// session exercises Edge independently of the hosted
     // Chrome case below: a latched Chrome warning cannot make this pass.

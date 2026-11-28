@@ -24690,6 +24690,7 @@ async function hodlBoot() {
       hodlShowWorkspace(tool);
       if (tool === "psbt") hodlShowPsbtTool({ inspect: "inspector", edit: "editor", nonce: "nonce" }[lesson] || "inspector", true);
       else if (tool === "sp") hodlShowPrivacyTool("sp", true);
+      else if (tool === "bip85" && document.getElementById("seedtools-tool-tabs")) hodlShowSeedTool("bip85", true);
       else document.querySelector(`#workspace-tabs [data-workspace="${tool}"]`)?.focus();
     },
   });
